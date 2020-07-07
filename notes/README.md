@@ -99,14 +99,14 @@ export default class VueRouter {
 * routeMap：把路由规则解析存储到routeMap，键：路由地址，值：路由组件，将来router-view组件会根据当前路由地址到routeMap对象找到对应的组件渲染到浏览器
 * data是一个响应式对象，存储当前的路由地址，路由变化时自动加载组件
 * observable：Vue提供的创建响应式对象方法
-* current：存储当前的路由地址，默认是‘/’
+* current：存储当前的路由地址，判断浏览器地址是否为跟目录，如果是跟目录值为‘/’，如果不是跟目录就为目标地址（/about），如刷新浏览器的情况
 
 ```javascript
 constructor(options) {
   this.options = options
   this.routeMap = {}
   this.data = _Vue.observable({
-    current: '/'
+    current: window.location.pathname || '/'
   })
 }
 ```
