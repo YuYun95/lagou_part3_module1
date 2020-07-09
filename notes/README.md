@@ -5,10 +5,15 @@
     * Hash 模式域名后面带有'#'，# 后面的是路由地址，可以通过问号携带参数
     * History 模式就是正常的url地址，需要服务端配置支持
 * 原理区别
-    * Hash 模式是基于锚点，通过锚点值作为路由地址；以及 onhashchange 事件，地址发生变化是触发onhashchange
-    * History 模式是基于 HTML5 中的History API
+    * Hash
+        * Hash 模式是基于锚点，通过锚点值作为路由地址；以及 onhashchange 事件，地址发生变化是触发onhashchange
+        * Hash 模式，调用push方法会先判断当前浏览器是否支持window.pushState，如果支持调用pushState改变地址栏，否则的话通过 window.location 改变地址
+    * History
+        * 模式是基于 HTML5 中的History API
         * history.pushState()，路径会发生变化，向服务器发送请求，IE10以后才支持
         * history.replaceState() 不会向服务器发送请求，只会改变浏览器地址，并且把地址记录在历史记录
+        * history 模式下调用router.push(url) 方法的时候，push 方法内部会调用 window.pushState，把 url 设置到浏览器的地址栏
+        * 当历史状态被激活的时候才会触发 popstate 事件
 
 ### History 模式
 * history 模式需要服务器的支持
@@ -236,7 +241,8 @@ export default class VueRouter {
     this.routeMap = {} // 把路由规则解析存储到routeMap，键：路由地址，值：路由组件，将来router-view组件会根据当前路由地址到routeMap对象找到对应的组件渲染到浏览器
     // data是一个响应式对象，存储当前的路由地址，路由变化时自动加载组件
     this.data = _Vue.observable({ // vue提供的创建响应式对象方法
-      current: '/' // 存储当前的路由地址，默认是‘/’
+    // 存储当前的路由地址，判断浏览器地址是否为跟目录，如果是跟目录值为‘/’，如果不是跟目录就为目标地址（/about），如刷新浏览器的情况
+      current: '/'
     })
   }
 
@@ -274,12 +280,15 @@ export default class VueRouter {
         clickHandler(e) {
           e.preventDefault() // 阻止默认行为
 
-          // history.pushState 改变浏览器地址栏地址，不会向服务器发送请求
-          // 参数一：data:触发popstate事件时传给popstate事件的事件对象参数；
-          // 参数二：title 网页标题；
-          // 参数三：地址
-          // 改变浏览器地址栏，但不会加载对应的组件
+          /**
+           * history.pushState 改变浏览器地址栏地址，不会向服务器发送请求
+           * 改变浏览器地址栏，但不会加载对应的组件
+           * 参数一：data:触发popstate事件时传给popstate事件的事件对象参数；
+           * 参数二：title 网页标题；
+           * 参数三：地址
+           */
           history.pushState({}, '', this.to)
+
           // 把当前路径记录在data.current，
           this.$router.data.current = this.to // this.$router.data.current：在install静态方法中已经把$router挂载到Vue上了
         }
@@ -290,7 +299,8 @@ export default class VueRouter {
       render(h) {
         // render 函数里的this不是指向Vue实例
         // 获取当前路由地址对应的路由组件，调用 h 函数把组件转为虚拟DOM返回
-        const component = self.routeMap[self.data.current] // 获取当前路由对应的组件
+        // 获取当前路由对应的组件，data是响应式的，当当前地址改变后将更新对应的页面
+        const component = self.routeMap[self.data.current]
         return h(component)
       }
     })
@@ -305,3 +315,261 @@ export default class VueRouter {
 }
 
 ```
+## 二、模拟 Vue.js 响应式原理
+
+###  数据驱动
+* 数据响应式、双向绑定、数据驱动
+* 数据响应式
+    * 数据模型仅仅是普通的 javascript 对象，而当我们修改数据时，视图会进行更新，避免繁琐的DOM操作，提高开发效率
+* 双向绑定
+    * 数据改变，视图改变；视图改变，数据也随之改变
+    * 可以使用v-model 在表单元素上创建双向数据绑定
+* 数据驱动是 Vue 最独特的特性之一
+    * 开发过程中仅需要关注数据本身，不需要关心数据是如何渲染到视图
+
+###  数据响应式核心原理-Vue2.x
+* [Vue2.x深入响应式原理](https://cn.vuejs.org/v2/guide/reactivity.html)
+* [MDN-Object.defineProperty](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Object/defineProperty)
+* 浏览器兼容IE8以上（不兼容IE8）
+
+```html
+<div id="app">hello</div>
+```
+
+```javascript
+// 模拟 Vue 中的 data 选项
+let data = {
+  msg: 'hello',
+  count: 10
+}
+
+// 模拟 Vue 的实例
+let vm = {}
+
+// 数据劫持：当访问或者设置 vm 中的成员的时候，做一些干预操作
+Object.defineProperty(vm, 'msg', {
+  // 可枚举（可以遍历）
+  enumerable: true,
+  // 可配置（可以使用 delete 删除，可以通过 defineProperty 重新定义）
+  configurable: true,
+  // 当获取值的时候执行
+  get () {
+    console.log('get', data.msg)
+    return data.msg
+  },
+  // 当设置值的时候执行
+  set (newValue) {
+    console.log('set', newValue)
+    if (newValue === data.msg){
+      return
+    }
+    data.msg = newValue
+    // 数据更新，更新 DOM 的值
+    document.querySelector('#app').textContent = data.msg
+  }
+})
+
+vm.msg = 'Hello world'
+console.log(vm.msg)
+```
+
+多个数据应该递归遍历数据，下面只实现遍历
+```javascript
+let data = {
+  msg: 'hello',
+  count: 10
+}
+
+let vm = {}
+
+proxyData(data)
+
+function proxyData(data) {
+  // 遍历 data 对象中的所有属性
+  Object.keys(data).forEach(key => {
+    // 把 data 中的属性，转换成 vm 的 setter/getter
+    Object.defineProperty(vm, key, {
+      enumerable: true,
+      configurable: true,
+      get () {
+        console.log('get', key, data[key])
+        return data[key]
+      },
+      set (newValue) {
+        console.log('set', kye, newValue)
+        if (newValue === data[key]) {
+          return
+        }
+        // 数据更新，更新 DOM
+        document.querySelector('#app').textContent = data[key]
+      }
+    })
+  })
+}
+
+vm.msg = 'Hello world'
+console.log(vm.msg)
+```
+
+###  数据响应式核心原理-Vue3.x
+* [MDN-Proxy](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Proxy)
+* 直接监听对象，而非属性
+* ES6 中新增，IE不支持，性能由浏览器优化
+
+```html
+<div id="app">hello</div>
+```
+
+```javascript
+// 模拟 vue 中的data
+let data = {
+  msg: 'hello',
+  count: 10
+}
+
+// 模拟 vue 实例
+let vm = new Proxy(data, {
+  // 执行代理行为的函数
+  //  当访问 vm 的成员会执行
+  get(target, key) { // target：代理的对象；key：访问的属性；这两个参数是系统传递的
+    console.log('get, key:', key, target[key])
+    return target[key]
+  },
+  // 当设置 vm 的成员会执行
+  set(target, key, newValue) {
+    console.log('set, key:', key, newValue)
+    if (target[key] === newValue) return
+    target[key] = newValue
+    document.querySelector('#app').textContent = target[key]
+  }
+})
+
+vm.msg = 'Hello world'
+console.log(vm.msg)
+```
+
+### 发布订阅模式
+* 发布订阅模式
+    * 订阅者
+    * 发布者
+    * 信号中心
+>我们假定，存在一个“信号中心”，某个任务执行完，就向信号中心“发布”(publish)一个信号，其他任务可以向信号中心“订阅”(subscribe)这个信号，从而知道什么时候自己可以开始执行，这就叫做“发布/订阅模式”(publish-subscribe pattern)
+* vue 的自定义事件
+```javascript
+let vm = new Vue()
+
+vm.$on('dataChange', () =>{ console.log('dataChange') })
+
+vm.$on('dataChange', () => { console.log('dataChange1') })
+
+vm.$emit('dataChange')
+```
+* 自定义事件实现原理
+    * 调用 $on 注册事件，调用 $emit 触发事件
+    * 在 vm 内部定义变量存储注册的事件名称和事件处理函数
+    * 注册事件可以注册多个事件名称，也可以给同一个事件注册多个事件处理函数
+    * 所以存储的变量时一个键值对的形式，键是事件名，值是事件处理函数；{ 'click': [fn1, fn2], 'change': [fn1] }
+    * $emint传递的是一个事件名称，通过名称去存储的变量找对应的事件处理函数一次执行
+
+* 兄弟组件通信过程
+```javascript
+// eventBus.js
+let eventHus = new Vue()
+
+// componentA.vue
+// 发布者
+addToDo: function () {
+  // 发布消息（事件）
+  eventHub.$emit('add-todo', { text: this.newTodoText })
+  this.newTodoText = ''
+}
+
+// componentB.vue
+// 订阅者
+create: function () {
+  // 订阅消息（事件）
+  eventHub.$on('add-todo', this.addTodo)
+}
+
+```
+* 实现发布订阅模式
+```javascript
+// 事件触发器
+class EventEmitter {
+  constructor() {
+    this.subs = Object.create(null) // 参数的作用是设置对象的原型，null 该对象没有原型属性
+  }
+
+  // 注册事件
+  $on(eventType, handler) {
+    this.subs[eventType] = this.subs[eventType] || []
+    this.subs[eventType].push(handler)
+  }
+
+  // 触发事件
+  $emit(eventType) {
+    if (this.subs[eventType]) {
+      this.subs[eventType].forEach(handler => {
+        handler() // 调用事件处理函数
+      })
+    }
+  }
+}
+
+let em = new EventEmitter()
+em.$on('click', () => { console.log('click1') })
+em.$on('click', () => { console.log('click2') })
+em.$emit('click')
+```
+
+### 观察者模式
+* 观察者（订阅者）- Watcher
+    * update(): 当事件发生时，具体要做的事情
+* 目标（发布者）- Dep
+    * subs数组: 存储所有的观察者
+    * addSun(): 添加观察者
+    * notify(): 当事件发生，调用所有观察者的update()方法
+* 没有事件中心
+    
+```javascript
+
+// 发布者
+class Dep {
+  constructor() {
+    // 记录所有的订阅者
+    this.subs = []
+  }
+
+  // 添加订阅者
+  addSun(sub) {
+    if (sub && sub.update) {
+      this.subs.push(sub)
+    }
+  }
+
+  // 发布通知
+  notify() {
+    this.subs.forEach(sub => {
+      sub.update()
+    })
+  }
+}
+
+// 订阅者-观察者
+class Watcher {
+  update() {
+    console.log('update')
+  }
+}
+
+let dep = new Dep()
+let watcher = new Watcher()
+
+dep.addSun(watcher)
+
+dep.notify()
+```
+* 总结
+    * 观察者模式是由具体目标调度，比如当事件触发，Dep 就会去调用观察者的方法，所以观察者模式的订阅者与发布者之间存在依赖的
+    * 发布/订阅模式由统一调度中心调用，因此发布者和订阅者不需要知道对方的存在
+![](./img/model.jpg)
