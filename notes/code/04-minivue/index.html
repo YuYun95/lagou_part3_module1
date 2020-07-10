@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>mini vue</title>
+  </head>
+  <body>
+    <div id="app">
+      <h1>差值表达式</h1>
+      <h3>{{ msg }}</h3>
+      <h1>v-text</h1>
+      <div v-text="msg"></div>
+      <h1>v-model</h1>
+      <input type="text" v-model="msg" />
+      <input type="text" v-model="count" />
+    </div>
+
+    <script src="./js/observer.js"></script>
+    <script src="./js/vue.js"></script>
+    <script>
+    let vm = new Vue({
+      el: '#app',
+      data: {
+        msg: 'Hello Vue',
+        count: 100,
+        user: {
+          name: 'zyh',
+          age: 20
+        }
+      }
+    })
+    console.log(vm)
+    console.log(vm.msg)
+    </script>
+  </body>
+</html>

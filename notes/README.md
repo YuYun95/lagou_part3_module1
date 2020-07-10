@@ -573,3 +573,141 @@ dep.notify()
     * 观察者模式是由具体目标调度，比如当事件触发，Dep 就会去调用观察者的方法，所以观察者模式的订阅者与发布者之间存在依赖的
     * 发布/订阅模式由统一调度中心调用，因此发布者和订阅者不需要知道对方的存在
 ![](./img/model.jpg)
+
+###  模拟Vue响应式原理-分析
+需要模拟的vue实例成员有如下5种类型
+![](./img/responsive-principle.jpg)
+
+* Vue
+    * 把 data 中的成员注入到 vue 实例，并且把 data 中的成员转成getter/setter
+* Observer
+    * 能够对数据对象的的所有属性进行监听，如有变动可拿到最新值并通知Dep
+* Compiler
+    * 解析每个元素指令和差值表达式，并替换成相应的数据
+* Dep(观察者模式中的目标)
+    * 添加观察者，当数据发生变化，通知所有观察者
+* Watcher(观察者模式中的观察者)
+    * 内部有一个updater方法，负责更新视图
+
+### 模拟Vue响应式原理-Vue
+Vue
+* 功能
+    * 负责接收初始化的参数（选项）
+    * 负责把 data 中的属性注入到 Vue 实例，转换为getter/setter
+    * 负责调用 observer 监听 data 中所有属性的变化
+    * 负责调用 compiler 解析指令/差值表达式
+* 结构
+![](./img/myVue.jpg)
+
+* 实现思路
+    * 通过属性保存选项数据
+    * 把 data 中的成员转换为 getter 和 setter，注入到 Vue 实例中，方便后续使用
+    * 调用 observer 对象，监听数据的变化
+    * 调用 compiler 对象，解析指令和差值表达式
+```javascript
+class Vue {
+  constructor(options) {
+    // 1.通过属性保存选项数据
+    this.$options = options || {}
+    this.$data = options.data || {}
+    this.$el = typeof options.el === 'string' ? document.querySelector(options.el) : options.el
+    // 2.把 data 中的成员转换为 getter 和 setter，注入到 vue 实例中
+    this._proxyData(this.$data)
+  }
+
+  // 代理数据
+  _proxyData(data) {
+    // 遍历 data 中的所有属性
+    Object.keys(data).forEach(key => {
+      // 把 data 中的属性注入到 Vue 实例中
+      Object.defineProperty(this, key, {
+        enumerable: true,
+        configurable: true,
+        get() {
+          return data[key]
+        },
+        set(newValue) {
+          if (newValue === data[key]) {
+            return
+          }
+          data[key] = newValue
+        }
+      })
+    })
+  }
+}
+
+```
+### 模拟Vue响应式原理-Observer(观察者)
+* 功能
+    * 负责把 data 选项中的属性转换成响应式数据
+    * data 中的某个属性也是对象，把该属性转换成响应式数据
+    * 数据变化发送通知，需要结合观察者模式
+* 结构
+![](./img/myObserver.jpg)
+
+* 实现思路
+    * walk 方法判断传入的 data 对象是否是对象；遍历 data 对象的所有属性，调用 defineReactive方法，转化为 getter 和 setter（响应式数据）
+    * defineReactive 方法接收三个参数，第三个参数接收的是val，而不是在方法内部通过 data[key]获取值，为什么？
+    * 因为访问实例属性时，首先触发 vue.js 里的 get 方法，这个 get 调用了 data[key]即 $data，因为这里调用了_proxyData方法并且把$data传入，这里会触发 observer 里的 get 方法，因为实例化了 Observer 类 并且把 $data 传入；如果在 observer 里直接使用 data[key]，则又触发了这个 get 方法，产生一个死递归，会发生堆栈溢出错误
+    * 第三个参数是局部变量，方法执行完应该被释放，但是这里没有释放，原因是传入的 obj 是 data 对象($data)，而 $data 引用了 get 方法，即外部对 get 方法有引用，而 get 方法又用到了val 产生了闭包
+    * 当 data 的属性是对象，把这个对象的属性转为响应式数据
+    * 当 data 的属性从新赋值为对象的时候，该对象的属性转为响应式数据
+    
+```javascript
+class Observer {
+  constructor(data) {
+    this.walk(data)
+  }
+
+  // 遍历对象的所有属性，判断传入的 data 对象是否是对象，加强代码健壮性
+  walk(data) {
+    // 1.判断 data 是否是对象
+    if (!data || typeof data !== 'object') {
+      return
+    }
+    // 2.遍历 data 对象的所有属性，调用 defineReactive方法，转化为 getter 和 setter（响应式数据）
+    Object.keys(data).forEach(key => {
+      this.defineReactive(data, key, data[key])
+    })
+  }
+
+  // 把属性转为getter 和 setter
+  // 第三个参数直接把值传入，而不是在内部通过data[key]获取值？
+  // 因为访问实例属性时，首先触发 vue.js 里的 get 方法，这个 get 调用了 data[key]即 $data，因为这里调用了_proxyData方法并且把$data传入，
+  // 这里会触发 observer 里的 get 方法，因为实例化了 Observer 类 并且把 $data 传入
+  // 如果在 observer 里直接使用 data[key]，则又触发了这个 get 方法，产生一个死递归，会发生堆栈溢出错误
+  // 使用了闭包，get 方法引用外部变量，所以当 defineReactive 执行完后 val 没有立即释放，所以可以获取值
+
+  defineReactive(obj, key, val) {
+    const that = this
+    // 如果val是对象，把 val内部的属性转为响应式数据
+    this.walk(val)
+    Object.defineProperty(obj, key, {
+      enumerable: true,
+      configurable: true,
+      get() {
+        return val
+      },
+      set(newValue) {
+        if (newValue === val) {
+          return
+        }
+        val = newValue
+        // 判断新值是否是对象类型，如果是就把属性转为响应式
+        that.walk(newValue)
+        // 发送通知
+      }
+    })
+  }
+}
+
+```
+
+### 模拟Vue响应式原理-Compiler
+* 功能(操作DOM)
+    * 负责编译模板，解析指令/差值表达式
+    * 负责页面的首次渲染
+    * 当数据变化后重新渲染视图
+* 结构
+![](./img/myCompiler.jpg)
