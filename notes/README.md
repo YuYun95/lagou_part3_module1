@@ -583,7 +583,7 @@ dep.notify()
 * Observer
     * 能够对数据对象的的所有属性进行监听，如有变动可拿到最新值并通知Dep
 * Compiler
-    * 解析每个元素指令和差值表达式，并替换成相应的数据
+    * 解析每个元素指令和插值表达式，并替换成相应的数据
 * Dep(观察者模式中的目标)
     * 添加观察者，当数据发生变化，通知所有观察者
 * Watcher(观察者模式中的观察者)
@@ -595,7 +595,7 @@ Vue
     * 负责接收初始化的参数（选项）
     * 负责把 data 中的属性注入到 Vue 实例，转换为getter/setter
     * 负责调用 observer 监听 data 中所有属性的变化
-    * 负责调用 compiler 解析指令/差值表达式
+    * 负责调用 compiler 解析指令/插值表达式
 * 结构
 ![](./img/myVue.jpg)
 
@@ -603,7 +603,7 @@ Vue
     * 通过属性保存选项数据
     * 把 data 中的成员转换为 getter 和 setter，注入到 Vue 实例中，方便后续使用
     * 调用 observer 对象，监听数据的变化
-    * 调用 compiler 对象，解析指令和差值表达式
+    * 调用 compiler 对象，解析指令和插值表达式
 ```javascript
 class Vue {
   constructor(options) {
@@ -681,12 +681,17 @@ class Observer {
 
   defineReactive(obj, key, val) {
     const that = this
+    // 负责收集依赖，并发送通知
+    let dep = new Dep()
+
     // 如果val是对象，把 val内部的属性转为响应式数据
     this.walk(val)
     Object.defineProperty(obj, key, {
       enumerable: true,
       configurable: true,
       get() {
+        // 收集依赖
+        Dep.target && dep.addSub(Dep.target)
         return val
       },
       set(newValue) {
@@ -697,6 +702,7 @@ class Observer {
         // 判断新值是否是对象类型，如果是就把属性转为响应式
         that.walk(newValue)
         // 发送通知
+        dep.notify()
       }
     })
   }
@@ -706,8 +712,330 @@ class Observer {
 
 ### 模拟Vue响应式原理-Compiler
 * 功能(操作DOM)
-    * 负责编译模板，解析指令/差值表达式
+    * 负责编译模板，解析指令/插值表达式
     * 负责页面的首次渲染
     * 当数据变化后重新渲染视图
 * 结构
 ![](./img/myCompiler.jpg)
+
+* 实现思路
+    * 遍历 DOM 元素，判断是文本节点还是元素节点
+    * 判断node节点，是否有子节点递归调用compile
+    * 如果是文本节点，处理插值表达式把变量名替换为对应的值重新赋值给文本节点(注意变量名前后可能有多个空格)
+    * 如果是元素节点，获取元素的属性节点，可能有多个属性节点所以要遍历判断属性是否以 v- 开始
+    * 根据元素属性(指令)调用对于的解析函数，把对应的值替换，建议函数名以指令名开始和统一的结束词组合，如：textUpdater、modelUpdater，在调用函数就可以使用指令名拼接结束词，而不需要使用if判断语句，后期指令多了也比较容易维护管理
+
+```javascript
+class Compiler {
+  constructor(vm) {
+    this.el = vm.$el // DOM 对象
+    this.vm = vm // Vue实例
+    this.compile(this.el) // 立即编译模版
+  }
+
+  // 编译模板，处理文本节点和元素节点
+  compile(el) {
+    let childNones = el.childNodes
+    Array.from(childNones).forEach(node => {
+      // 处理文本节点
+      if (this.isTextNode(node)) {
+        this.compileText(node)
+      } else if (this.isElementNode(node)) {
+        // 处理元素节点
+        this.compileElement(node)
+      }
+
+      // 判断node节点，是否有子节点，如果仅有子节点，要递归调用compile
+      if (node.childNodes && node.childNodes.length) {
+        this.compile(node)
+      }
+    })
+  }
+
+  // 编译元素节点(获取元素的属性节点)，处理指令
+  compileElement(node) {
+    // console.log(node.attributes)
+    // 遍历所有的属性节点
+    Array.from(node.attributes).forEach(attr => {
+      // 判断是否是指令
+      let attrName = attr.name
+      if (this.isDirective(attrName)) {
+        // v-text --> text
+        attrName = attrName.substring(2)
+        let key = attr.value
+        this.update(node, key, attrName)
+      }
+    })
+  }
+
+  // 根据指令拼接函数(不需要if语句)，调用对于的指令处理函数
+  update(node, key, attrName) {
+    let updateFn = this[attrName + 'Updater']
+    updateFn && updateFn(node, this.vm[key])
+  }
+
+  // 处理 v-text 指令
+  textUpdater(node, value) {
+    node.textContent = value
+  }
+
+  // v-model
+  modelUpdater(node, value) {
+    node.value = value
+  }
+
+  // 编译文本节点，处理插值表达式
+  compileText(node) {
+    // {{   msg }}
+    // 匹配插值表达式，获取插值表达式中的内容
+    let reg = /\{\{(.+?)\}\}/
+    let value = node.textContent
+
+    // 如果文本节点是插值表达式，就替换内容
+    if (reg.test(value)) {
+      let key = RegExp.$1.trim() // 获取正则匹配的第一个分组
+      node.textContent = value.replace(reg, this.vm[key])
+    }
+  }
+
+  // 判断元素属性是否是指令
+  isDirective(attrName) {
+    return attrName.startsWith('v-')
+  }
+
+  // 判断节点是否是文本节点
+  isTextNode(node) {
+    return node.nodeType === 3
+  }
+
+  // 判断节点是否是元素节点
+  isElementNode(node) {
+    return node.nodeType === 1
+  }
+}
+
+```
+
+### 模拟Vue响应式原理-Dep(Dependency)
+![](./img/myDep1.jpg)
+* Vue 负责把 data 注入到 Vue 实例并且调用 observer 和 compiler
+* observer 负责数据劫持即监听属性的变化，把 data 属性转换为 getter 和
+ setter
+* compiler 负责解析插表达式和指令
+* dep 负责在 getter 方法中收集依赖
+* 所有响应式的属性都会创建一个对应的 dep 对象，负责收集所有依赖于该属性的地方，所有依赖于该属性的位置都会插件一个watcher对象，所以dep就是收集依赖于该属性的watcher对象，setter方法会通知依赖，当属性发生变化的时候会调用属性的notify发送通知
+
+* 功能
+    * 收集依赖，添加观察者(watcher)
+    * 通知所有观察者
+* 结构
+![](./img/myDep2.jpg)
+
+```javascript
+class Dep {
+  constructor() {
+    // 存储所有的观察者
+    this.subs = []
+  }
+
+  // 添加观察者
+  addSub(sub) {
+    if (sub && sub.update){
+      this.subs.push(sub)
+    }
+  }
+
+  // 发送通知
+  notify() {
+    this.subs.forEach(sun => {
+      sun.update()
+    })
+  }
+}
+
+```
+
+### 模拟Vue响应式原理-watcher
+![](./img/myWatcher1.jpg)
+* 在 data 属性的 getter 方法中通过 Dep 对象收集依赖，在 data 属性的setter 方法通过 Dep 对象触发依赖，所以 data 每个属性都要创建一个对应的 Dep 对象，在收集依赖的时候，把依赖该属性的所有watcher(观察者对象)添加到 Dep 对象的 subs 数组中，在 data 的setter方法触发依赖(发送通知)，它会调用 Dep 对象的 notify 方法通知所有关联的 watcher 对象，watcher对象负责更新对应的视图
+* 功能
+    * 当数据变化触发依赖，dep 通知所有的watcher实例更新视图
+    * 自身实例化的时候往 dep 对象中添加自己()
+![](./img/myWatcher2.jpg)
+
+```javascript
+class Watcher {
+  constructor(vm, key, cb) {
+    this.vm = vm
+    // data 中的属性名称
+    this.key = key
+    // 回调函数负责更新视图
+    this.cb = cb
+
+    // 把watcher对象记录到Dep类的静态属性target
+    Dep.target = this
+    // 触发get方法，在get方法中会调用addSub
+
+    this.oldValue = vm[key]
+    Dep.target = null
+  }
+
+  // 当数据发生变化的时候更新视图
+  update() {
+    let newValue = this.vm[this.key]
+    if (this.oldValue === newValue) {
+      return
+    }
+    this.cb(newValue)
+  }
+}
+
+```
+### 总结
+* 问题
+    * 给属性重新赋值成对象，是否是响应式的？在observer类中的set方法会调用walk方法判断值是否是对象，如果是对象就转换为响应式
+    * 给 Vue 实例新增一个成员是否是响应式的？不是
+* 整体流程
+![](./img/vue.jpg)
+
+## 三、Virtual DOM 的实现原理
+
+### 什么是虚拟 DOM
+* Virtual DOM(虚拟 DOM)，是由普通的 JS 对象来描述 DOM 对象，因为不是真实的 DOM 对象，所以叫 Virtual DOM
+* 真实 DOM 成员，通过以下代码打印出 DOM 成员可以看到 DOM 成员非常多，所以操作 DOM 开销很大
+```javascript
+let element = document.querySelector('#app')
+let s = ''
+for (var key in element) {
+  s += key + ','
+}
+console.log(s)
+```
+* 可以使用 Virtual DOM 来描述真实 DOM，示例
+```javascript
+{
+  sel: 'div',
+  data: {},
+  children: undefined,
+  text: 'Hello Virtual DOM',
+  elm: undefined,
+  key: undefined
+}
+```
+
+###　为什么使用　Virtual DOM
+* 手动操作 DOM 比较麻烦，还需要考虑浏览器兼容性问题，虽然有 jQuery 等库简化 DOM 操作，但是随着项目的复杂 DOM 操作复杂提升
+* 为了简化 DOM 的复杂操作于是出现了各种 MVVM 框架，MVVM 框架解决了视图和状态的同步问题
+* 为了简化视图的操作我们可以使用模板引擎，但是模板引擎没有解决跟踪状态变化的问题，于是 Virtual DOM 出现了
+* Virtual DOM 的好处是当状态改变时不需要立即更新 DOM，只需要创建一个虚拟树来描述 DOM，Virtual DOM 内部将弄清楚如何有效(diff)的更新 DOM
+* 参考 github [vitual-dom](https://github.com/Matt-Esch/virtual-dom) 的描述
+    * 虚拟 DOM 可以维护程序的状态，跟踪上一次的状态
+    * 通过比较前后两次状态的差异更新真实DOM
+
+### 虚拟DOM的作用和虚拟DOM库
+* 维护视图和状态的关系
+* 负责视图情况下提升渲染性能
+* 除了渲染 DOM 以为，还可以实现 SSR(Nuxt.js/Next.js)、原生应用(Weex/React Native)、小程序(mpvue/uni-app)等
+![](./img/virtual.jpg)
+* Virtual DOM 库
+    * [Snabbdom](https://github.com/snabbdom/snabbdom)
+        * [中文文档](https://github.com/coconilu/Blog/issues/152)
+        * Vue2.x 内部使用的 Virtual DOM 就是改造的Snabbdom
+        * 大约200 SLOC(single line of code)
+        * 通过模块可扩展
+        * 源码使用 TypeScript 开发
+        * 最快的 Virtual DOM 之一
+    * [virtual-dom](https://github.com/Matt-Esch/virtual-dom)
+
+### Snabbdom
+* Snabbdom的核心
+    * 使用h()函数创建 javascript 对象(vnode)描述真实DOM
+    * init()设置模块，创建patch()
+    * pathch() 比较新旧两个vnode
+    * 把变化的内容更新到真实DOM树上
+* 安装 `yarn add snabbdom`
+* 导入
+    * Snabbdom的官网demo中导入使用的是commonjs模块语法，我们使用ES6的模块化语法 import
+    * ES6模块于Commonjs模块的差异
+      `import {init, h, thunk } from snabbdom`
+    * Snabbdom 的核心仅提供最基本的功能，只导出了三个函数init()、h()、thunk()
+        * init()是一个高阶函数，返回patch()
+        * h()返回虚拟节点 VNode，这个函数我们在使用 Vue.js 的时候见过
+        ```javascript
+        new Vue({
+          router,
+          store,
+          render:h => h(App)
+        }).$mount('#app')
+        ```
+        * thunk()是一种优化策略，可以在处理不可变数据时使用
+* 注意：导入的时候不能使用 `import snabbdom from 'snabbdom'`
+    * 原因：node_modules/src/snabbdom.ts 末尾导出使用的语法是export导出API，没有使用 export default 导出默认输出
+    ```javascript
+    export {h} from './h'
+    export {thrnk} from './thrnk'
+    export function init(modules:Array<Partial<Module>>, domApi?:DOMAPI) {}
+    ```
+### 模块
+* Snabbdom 的和兴库并不能处理元素的属性、样式、事件等，如果需要处理的话可以使用模块
+* 常用模块：官方提供了6个模块
+    * attributes
+        * 设置 DOM元素的属性，使用 setAttribute()
+        * 处理布尔类型的属性
+    * props
+        * 和 attributes 模块相似，设置 DOM 元素的属性 element[attr] = value
+        * 不处理布尔类型的属性
+    * class
+        * 切换类样式
+        * 注意：给元素设置类样式是通过 sel 选择器
+    * dataset
+        * 设置 data-* 的自定义属性
+    * eventlisteners
+        * 注册和移除事件
+    * style
+        * 设置行内样式，支持动画
+        * delayed/remove/destroy
+* 模块使用：
+    * 导入需要的模块
+    * init()中注册模块
+    * 使用 h() 函数创建vnode的时候，可以把第二个参数设置为对象，其它参数往后移
+```javascript
+import {init, h} from 'snabbdom'
+// 1. 导入模块
+import style from 'snabbdom/modules/style'
+import eventlisteners from 'snabbdom/modules/eventlisteners'
+// 2. 注册模块
+let path = init([style, eventlisteners])
+// 3. 使用 h() 函数的第二个参数传入模块需要的数据(对象)
+let vnode = h('div', {
+  style: {
+    backgroundColor: '#eee',
+  },
+  on: {
+    click: evnetHandler
+  }
+}, [
+  h('h1', 'Hello Snabbdom'),
+  h('p', '这是p标签')
+])
+
+function evnetHandler() {
+  console.log('点击我了')
+}
+
+let app = document.querySelector('#app')
+
+path(app, vnode)
+
+```
+
+### patch的整体过程
+* patch(oldVnode, newVnode)
+* 打补丁，把新节点中变化的内容渲染到真实DOM，最后返回新节点作为下一次处理的旧节点
+* 对比新旧VNode是否相同节点(节点的key和sel相同)
+* 如果不是相同节点，删除之前的内容，重新渲染
+* 如果是相同节点，再判断新的VNode是否有text，如果有并且和oldVnode的text不同，直接更新文本内容
+* 如果新的VNode有children，判断子节点是否有变化，判断子节点的过程使用的就是diff算法
+* diff过程只进行同层级比较
+![](./img/diff.jpg)
+
