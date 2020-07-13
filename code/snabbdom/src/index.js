@@ -99,6 +99,7 @@ function render() {
         m.offset = last ? last.offset + last.elmHeight + margin : margin
         return acc.concat(m)
     }, [])
+console.log(data[data.length - 1]);
 
     // 处理删除所以内容报错的问题
     totalHeight = data[data.length - 1] ? data[data.length - 1].offset + data[data.length - 1].elmHeight : 0
