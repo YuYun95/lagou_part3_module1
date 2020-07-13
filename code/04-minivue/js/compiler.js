@@ -40,6 +40,11 @@ class Compiler {
     })
   }
 
+  event(node, key, attrName) {
+    let eventFn = this[attrName + 'Handler']
+    eventFn && eventFn.call(this, node, this.vm[key], key)
+  }
+
   // 根据指令拼接函数(不需要if语句)，调用对于的指令处理函数
   update(node, key, attrName) {
     if (attrName.startsWith('on:')) {
