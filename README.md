@@ -26,7 +26,7 @@ let vm = new Vue({
 
 ## 二、编程题
 ### 1、模拟 VueRouter 的 hash 模式的实现，实现思路和 History 模式类似，把 URL 中的 # 后面的内容作为路由的地址，可以通过 hashchange 事件监听路由地址的变化。
-代码：[]()
+代码地址：https://github.com/YuYun95/lagou_part3_module1/tree/master/code/hash-router
 * 思路
     * Hash 模式是基于锚点，通过锚点值作为路由地址；以及 onhashchange 事件，地址发生变化时触发onhashchange
     * Hash 模式路由与 history 模式路由类似
@@ -119,6 +119,7 @@ export default class VueRouter {
 
 ```
 ### 2、在模拟 Vue.js 响应式源码的基础上实现 v-html 指令，以及 v-on 指令。
+代码地址：https://github.com/YuYun95/lagou_part3_module1/tree/master/code/04-minivue
 * v-html 指令
     * 原理：v-html 实现和 v-text 基本一样，不同在于 v-html 把变量赋值到 innerHTML
     * compiler.js 核心代码
@@ -189,5 +190,215 @@ class Compiler {
     return attrName.startsWith('v-') || attrName.startsWith('@')
   }
 }
+
+```
+
+* index.html
+```html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>mini vue</title>
+  </head>
+  <body>
+    <div id="app">
+      <h1>v-html</h1>
+      <div v-html="html"></div>
+      <h1>v-on</h1>
+      <div @:click="clickHandler">点击触发</div>
+      <div v-on:mouseover="mouseOver">鼠标进入触发</div>
+    </div>
+
+    <script src="./js/dep.js"></script>
+    <script src="./js/watcher.js"></script>
+    <script src="./js/compiler.js"></script>
+    <script src="./js/observer.js"></script>
+    <script src="./js/vue.js"></script>
+    <script>
+    let vm = new Vue({
+      el: '#app',
+      data: {
+        html: '<p style="color: skyblue">这是一个p标签</p>',
+      },
+      methods: {
+        clickHandler() {
+          console.log('点击事件')
+          alert('点击了')
+        },
+        mouseOver(){
+          alert('鼠标进入')
+          console.log('mouseOver')
+        }
+      }
+    })
+    </script>
+  </body>
+</html>
+
+```
+### 3、参考 Snabbdom 提供的电影列表的示例，实现类似的效果
+* 实现原理
+  * 导入 init 函数注册模块返回一个 patch，导入 h 函数创建 vnode
+  * 导入 className 切换类样式、eventlisteners 注册事件、style行内样式、props 设置DOM元素的属性
+  * 当初始的 HTML 文档被完全加载和解析完成之后，使用 h 函数生成 vnode，然后 patch 到 id 为 container 的 div 上生成页面结构
+  * 排序按钮通过 eventlisteners 的 on 属性调用排序函数，点击按钮调用排序函数，然后重新渲染页面；class 判断当前的是以什么排序，对应的按钮显示为激活状态；style 设置整个列表的高度
+  * 在定义列表的行结构时，使用 props 模块设置 DOM 的 key 属性；通过 style 模块添加delayed(进场样式)和remove(退场样式)以及 opacity 和 transform
+  * hook属性中设置了insert属性，也就是在节点插入到dom中后，触发该回调，设置节点的高度
+  * 每一行的最后一列添加删除的图标，使用 eventlisteners 的 on 属性调用删除函数，点击删除按钮删除该行，然后重新渲染页面
+  * 添加按钮的回调函数就是随机生成一个数据对象，但是其rank属性是全局递增的。然后对新数据调用h函数生成新的vnode，并且patch到页面上，重新渲染了页面
+  * 注意：删除当删除剩余一条数据的时候会报错 `Uncaught TypeError: Cannot read property 'offset' of undefined` 是因为当删除仅剩的一条数据是 render 函数中的 `data[data.length - 1]` 为 undefined，需要对该处代码做判断做对应的处理，此处已改为判断为 undefined 时 将不获取数据 offset 而是赋值为0
+  
+```html
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link href="./src/index.css">
+</head>
+
+<body>
+    <div id="container"></div>
+    <script src="./src/index.js"></script>
+</body>
+
+</html>
+```
+
+```javascript
+import { init, h } from 'snabbdom'
+import className from 'snabbdom/modules/class'
+import eventlisteners from 'snabbdom/modules/eventlisteners'
+import style from 'snabbdom/modules/style'
+import props from 'snabbdom/modules/props'
+
+let patch = init([className, eventlisteners, style, props])
+
+var vnode
+
+var nextKey = 11
+var margin = 8
+var sortBy = 'rank'
+var totalHeight = 0
+var originalData = [
+    { rank: 1, title: 'The Shawshank Redemption', desc: 'Two imprisoned men bond over a number of years, finding solace and eventual redemption through acts of common decency.', elmHeight: 0 },
+    { rank: 2, title: 'The Godfather', desc: 'The aging patriarch of an organized crime dynasty transfers control of his clandestine empire to his reluctant son.', elmHeight: 0 },
+    { rank: 3, title: 'The Godfather: Part II', desc: 'The early life and career of Vito Corleone in 1920s New York is portrayed while his son, Michael, expands and tightens his grip on his crime syndicate stretching from Lake Tahoe, Nevada to pre-revolution 1958 Cuba.', elmHeight: 0 },
+    { rank: 4, title: 'The Dark Knight', desc: 'When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, the caped crusader must come to terms with one of the greatest psychological tests of his ability to fight injustice.', elmHeight: 0 },
+    { rank: 5, title: 'Pulp Fiction', desc: 'The lives of two mob hit men, a boxer, a gangster\'s wife, and a pair of diner bandits intertwine in four tales of violence and redemption.', elmHeight: 0 },
+    { rank: 6, title: 'Schindler\'s List', desc: 'In Poland during World War II, Oskar Schindler gradually becomes concerned for his Jewish workforce after witnessing their persecution by the Nazis.', elmHeight: 0 },
+    { rank: 7, title: '12 Angry Men', desc: 'A dissenting juror in a murder trial slowly manages to convince the others that the case is not as obviously clear as it seemed in court.', elmHeight: 0 },
+    { rank: 8, title: 'The Good, the Bad and the Ugly', desc: 'A bounty hunting scam joins two men in an uneasy alliance against a third in a race to find a fortune in gold buried in a remote cemetery.', elmHeight: 0 },
+    { rank: 9, title: 'The Lord of the Rings: The Return of the King', desc: 'Gandalf and Aragorn lead the World of Men against Sauron\'s army to draw his gaze from Frodo and Sam as they approach Mount Doom with the One Ring.', elmHeight: 0 },
+    { rank: 10, title: 'Fight Club', desc: 'An insomniac office worker looking for a way to change his life crosses paths with a devil-may-care soap maker and they form an underground fight club that evolves into something much, much more...', elmHeight: 0 },
+]
+var data = [
+    originalData[0],
+    originalData[1],
+    originalData[2],
+    originalData[3],
+    originalData[4],
+    originalData[5],
+    originalData[6],
+    originalData[7],
+    originalData[8],
+    originalData[9],
+]
+
+// 根据prop排序
+function changeSort(prop) {
+    sortBy = prop
+    data.sort((a, b) => {
+        if (a[prop] > b[prop]) {
+            return 1
+        }
+        if (a[prop] < b[prop]) {
+            return -1
+        }
+    })
+    render()
+}
+
+// 添加一条数据
+function add() {
+    // 随机获取 originalData 中的一条数据
+    var n = originalData[Math.floor(Math.random() * 10)]
+
+    // 添加数据
+    data = [{ rank: nextKey++, title: n.title, desc: n.desc, elmHeight: 0 }].concat(data)
+    render()
+    render()
+}
+
+
+// 根据传递的movie移除对应的数据
+function remove(movie) {
+    data = data.filter((m) => {
+        return m !== movie
+    })
+    render()
+}
+
+// 定义列表行
+function movieView(movie) {
+    return h('div.row', {// 定义行
+        key: movie.rank,
+        style: { // 行内样式
+            opacity: '0',
+            transform: 'translate(-200px)',
+            // 进场样式
+            delayed: { transform: `translateY(${movie.offset}px)`, opacity: '1' },
+            // 退场样式
+            remove: { opacity: '0', transform: `translateY(${movie.offset}px) translateX(200px)` }
+        },
+        hook: { insert: (vnode) => { movie.elmHeight = vnode.elm.offsetHeight } },
+    }, [// 定义列表列
+        h('div', { style: { fontWeight: 'bold' } }, movie.rank),
+        h('div', movie.title),
+        h('div', movie.desc),
+        h('div.btn.rm-btn', { on: { click: [remove, movie] } }, 'x'),
+    ])
+}
+
+// 调用patch对比新旧vnode渲染
+function render() {
+    data = data.reduce((acc, m) => {
+        var last = acc[acc.length - 1]
+        m.offset = last ? last.offset + last.elmHeight + margin : margin
+        return acc.concat(m)
+    }, [])
+console.log(data[data.length - 1]);
+
+    // 处理删除所以内容报错的问题
+    totalHeight = data[data.length - 1] ? data[data.length - 1].offset + data[data.length - 1].elmHeight : 0
+    vnode = patch(vnode, view(data))
+}
+
+
+// layout
+function view(data) {
+    return h('div', [
+        h('h1', 'Top 10 movies'),
+        h('div', [
+            h('a.btn.add', { on: { click: add } }, 'Add'),
+            'Sort by: ',
+            h('span.btn-group', [
+                h('a.btn.rank', { class: { active: sortBy === 'rank' }, on: { click: [changeSort, 'rank'] } }, 'Rank'),
+                h('a.btn.title', { class: { active: sortBy === 'title' }, on: { click: [changeSort, 'title'] } }, 'Title'),
+                h('a.btn.desc', { class: { active: sortBy === 'desc' }, on: { click: [changeSort, 'desc'] } }, 'Description'),
+            ]),
+        ]),
+        h('div.list', { style: { height: totalHeight + 'px' } }, data.map(movieView)),
+    ])
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    var container = document.getElementById('container')
+    vnode = patch(container, view(data))
+    render()
+})
 
 ```
