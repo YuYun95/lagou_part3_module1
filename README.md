@@ -238,6 +238,7 @@ class Compiler {
 
 ```
 ### 3、参考 Snabbdom 提供的电影列表的示例，实现类似的效果
+代码地址：https://github.com/YuYun95/lagou_part3_module1/tree/master/code/snabbdom
 * 实现原理
   * 导入 init 函数注册模块返回一个 patch，导入 h 函数创建 vnode
   * 导入 className 切换类样式、eventlisteners 注册事件、style行内样式、props 设置DOM元素的属性
