@@ -1037,5 +1037,62 @@ path(app, vnode)
 * 如果是相同节点，再判断新的VNode是否有text，如果有并且和oldVnode的text不同，直接更新文本内容
 * 如果新的VNode有children，判断子节点是否有变化，判断子节点的过程使用的就是diff算法
 * diff过程只进行同层级比较
+
 ![](./img/diff.jpg)
 
+### updateChildren整体分析
+* 功能
+    * diff 算法的核心，对比新旧节点的children，更新 DOM
+* 执行过程：
+    * 要对比两颗树的差异，可以取第一颗树的每一个节点依次和第二颗树的每一个节点比较，但是这样的时间复杂度为O(n^3)
+    * 在 DOM 操作的时候很少很少会把一个父节点更新到某一个子节点
+    * 因此只需要找同级别的子节点依次比较，然后再找下一级别的节点比较，这样算法的时间复杂度为O(n)
+    ![](./img/diff.jpg)
+    * 在进行同级别节点比较的时候，首先会对新老节点数组的开始和结尾节点设置标记索引，遍历的过程中移动索引
+    * 在对开始和结束节点比较的时候，总共有四种情况
+        * oldStartVnode / newStartVnode (旧开始节点 / 新开始节点)
+        * oldEndVnode / newEndVnode (旧结束节点 / 新结束节点)
+        * oldStartVnode / newEndVnode (旧开始节点 / 新结束节点)
+        * oldEndVnode/ newStartVnode (旧结束节点 / 新开始节点)
+        
+        ![](./img/diff_1.jpg)
+    * 开始节点和结束节点比较，这两种情况类似
+        * oldStartVnode / newStartVnode (旧开始节点 / 新开始节点)
+        * oldEndVnode / newEndVnode (旧结束节点 / 新结束节点)
+    * 如果 oldStartVnode 和 newStartVnode 是 sameVnode(key 和 sel 相同)
+        * 调用 patchVnode() 对比和更新节点
+        * 把旧开始和新开始索引往后移动 oldStartVnode++ / newStartVnode++
+        
+        ![](./img/diff_2.jpg)
+    * oldStartVnode / newEndVnode(旧开始节点 / 新结束节点)相同
+        * 调用 patchVnode() 对比和更新节点
+        * 把 oldStartVnode 对应的 DOM 元素，移动到右边
+        * 更新索引
+        
+        ![](./img/diff_3.jpg)
+    * oldEndVnode / newStartVnode(旧结束节点 / 新开始节点)相同
+        * 调用 patchVnode() 对比和更新节点
+        * 把oldEndVnode 对应的 DOM 元素，移动到左边
+        * 更新索引
+        
+        ![](./img/diff_4.jpg)
+    * 如果不是以上四种情况
+        * 遍历新节点，使用 newStartVnode 的 key 在老节点数组中找相同节点
+        * 如果没有找到，说明 newStartVnode 是新节点
+            * 创建新节点对应的 DOM 元素，插入到 DOM 树中
+        * 如果找到了
+            * 判断新节点和找到的老节点的 sel 选择器是否相同
+            * 如果不相同，说明节点被修改了
+                * 重新创建对应的 DOM 元素，插入到 DOM 树中
+            * 如果相同，把 elmToMove 对应的 DOM 元素，移动到左边
+            
+        ![](./img/diff_5.jpg)
+    * 循环结束
+        * 当老节点的所有子节点先遍历完(oldStartIdx > oldEndIdx)，循环结束
+        * 新节点的所有子节点先遍历完(newStartIdx > newEndIdx)，循环结束
+    * 如果老节点的数组先遍历完(oldStartIdx > oldEndIdx)，说明新节点有剩余，把剩余节点批量插入到右边
+    
+        ![](./img/diff_6.jpg)
+    * 如果新节点的数组先遍历完(newStartIdx > newEndIdx)，说明老节点有剩余，把剩余节点批量删除
+    
+        ![](./img/diff_7.jpg)
