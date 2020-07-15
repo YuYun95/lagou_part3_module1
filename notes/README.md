@@ -572,10 +572,12 @@ dep.notify()
 * 总结
     * 观察者模式是由具体目标调度，比如当事件触发，Dep 就会去调用观察者的方法，所以观察者模式的订阅者与发布者之间存在依赖的
     * 发布/订阅模式由统一调度中心调用，因此发布者和订阅者不需要知道对方的存在
+    
 ![](./img/model.jpg)
 
 ###  模拟Vue响应式原理-分析
 需要模拟的vue实例成员有如下5种类型
+
 ![](./img/responsive-principle.jpg)
 
 * Vue
@@ -597,6 +599,7 @@ Vue
     * 负责调用 observer 监听 data 中所有属性的变化
     * 负责调用 compiler 解析指令/插值表达式
 * 结构
+
 ![](./img/myVue.jpg)
 
 * 实现思路
@@ -644,6 +647,7 @@ class Vue {
     * data 中的某个属性也是对象，把该属性转换成响应式数据
     * 数据变化发送通知，需要结合观察者模式
 * 结构
+
 ![](./img/myObserver.jpg)
 
 * 实现思路
@@ -716,6 +720,7 @@ class Observer {
     * 负责页面的首次渲染
     * 当数据变化后重新渲染视图
 * 结构
+
 ![](./img/myCompiler.jpg)
 
 * 实现思路
@@ -829,6 +834,7 @@ class Compiler {
     * 收集依赖，添加观察者(watcher)
     * 通知所有观察者
 * 结构
+
 ![](./img/myDep2.jpg)
 
 ```javascript
@@ -861,6 +867,7 @@ class Dep {
 * 功能
     * 当数据变化触发依赖，dep 通知所有的watcher实例更新视图
     * 自身实例化的时候往 dep 对象中添加自己()
+    
 ![](./img/myWatcher2.jpg)
 
 ```javascript
@@ -896,6 +903,7 @@ class Watcher {
     * 给属性重新赋值成对象，是否是响应式的？在observer类中的set方法会调用walk方法判断值是否是对象，如果是对象就转换为响应式
     * 给 Vue 实例新增一个成员是否是响应式的？不是
 * 整体流程
+
 ![](./img/vue.jpg)
 
 ## 三、Virtual DOM 的实现原理
@@ -999,6 +1007,7 @@ console.log(s)
     * 导入需要的模块
     * init()中注册模块
     * 使用 h() 函数创建vnode的时候，可以把第二个参数设置为对象，其它参数往后移
+    
 ```javascript
 import {init, h} from 'snabbdom'
 // 1. 导入模块
