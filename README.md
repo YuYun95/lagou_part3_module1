@@ -20,9 +20,44 @@ let vm = new Vue({
 * Vue.set()实现原理：调用 `defineReactive(ob.value, key, val)` 函数进行依赖收集，调用 `ob.dep.notify()` 更新视图
 
 ### 2、请简述 Diff 算法的执行过程
-* 对比新旧节点的key和sel是否相同，如果不是相同节点，删除之前的内容，重新渲染
-* 如果是相同节点，判断vnode的text是否有值，比较不同，如果不同更新文本
-* Diff 算法是对新旧节点的同级进行比较
+* Diff 算法是对比新旧节点的子节点，同级别节点依次比较，算法时间复杂度为O(n)
+* 在进行同级别节点比较的时候，首先会对新旧节点数组的开始和结束节点设置标记索引，遍历过程中移动索引
+* 在对开始和结束节点比较的时候，总共有四种情况：
+    * oldStartVnode / newStartVnode(旧开始节点 / 新开始节点)
+    * oldEndVnode / newEndVnode(旧结束节点 / 新结束节点)
+    * oldStartVnode / newEndVnode(旧开始节点 / 新结束节点)
+    * oldEndVnode / newStartVnode(旧结束节点 / 新开始节点)
+循环遍历新旧节点
+* 首先判断 oldStartVnode 和 newStartVnode 是否是 sameVnode(sel 和 key 是否相同)
+    * patchVnode 比较 oldStartVnode 和 newStartVnode，更新节点
+    * 标记索引往后移(++oldStartIdx、++newStartIdx)
+* 否则判断 oldEndVnode 和 newEndVnode 是否是 sameVnode(sel 和 key 是否相同)
+    * patchVnode 比较 oldEndVnode 和 newEndVnode，更新节点
+    * 标记索引往前移(--oldEndIdx、--newEndIdx)
+* 否则判断 oldStartVnode 和 newEndVnode 是否是 sameVnode(sel 和 key 是否相同)
+    * patchVnode 比较 oldStartVnode 和 newEndVnode，更新节点
+    * 把 oldStartVnode 移动到右边
+    * 标记索引移动(++oldStartIdx、--newEndIdx)
+* 否则判断 oldEndVnode 和 newStartVnode 是否是 sameVnode(sel 和 key 是否相同)
+    * patchVnode 比价 oldEndVnode 和 newStartVnode，更新节点
+    * 把 oldEndVnode 移动到左边
+    * 标记索引移动(--oldEndIdx、++newStartIdx)
+* 如果不是以上四种情况
+    * 遍历新节点，使用 newStartVnode 的 key 在老节点数组中找相同节点
+    * 如果没有找到，说明 newStartVnode 是新节点
+        * 创建新节点对应的 DOM 元素，插入到 DOM 树中
+    * 如果找到了
+        * 判断新节点和找到的老节点的 sel 选择器是否相同
+        * 如果不相同，说明节点被修改了
+            * 重新创建对应的 DOM 元素，插入到 DOM 树中
+        * 如果相同，把 elmToMove 对应的 DOM 元素，移动到左边
+* 循环结束
+    * 当老节点的所有子节点先遍历完(oldStartIdx > oldEndIdx)，循环结束
+    * 新节点的所有子节点先遍历完(newStartIdx > newEndIdx)，循环结束
+    
+    如果老节点的数组先遍历完(oldStartIdx > oldEndIdx)，说明新节点有剩余，把剩余节点批量插入到右边
+    
+    如果新节点的数组先遍历完(newStartIdx > newEndIdx)，说明老节点有剩余，把剩余节点批量删除
 
 ## 二、编程题
 ### 1、模拟 VueRouter 的 hash 模式的实现，实现思路和 History 模式类似，把 URL 中的 # 后面的内容作为路由的地址，可以通过 hashchange 事件监听路由地址的变化。
